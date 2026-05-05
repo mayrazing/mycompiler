@@ -3,6 +3,22 @@ from dataclasses import dataclass
 from typing import Any, Callable
 import compiler.ast as AST
 
+
+class BreakException(Exception):
+    def __init__(self, location: Any) -> None:
+        self.location = location
+
+
+class ContinueException(Exception):
+    def __init__(self, location: Any) -> None:
+        self.location = location
+
+
+class ReturnException(Exception):
+    def __init__(self, value: 'Value') -> None:
+        self.value = value
+
+
 Value = int | bool | None | Callable
 
 
@@ -128,21 +144,24 @@ def interpret(node: AST.Module, symtab: SymTab) -> Value:
                     return interpret_expression(node.else_clause, symtab)
 
         def interpret_while_loop(node: AST.WhileLoop, symtab: SymTab) -> Value:
-            cond_value = interpret_expression(node.cond, symtab)
-            if not isinstance(cond_value, bool):
-                raise Exception(
-                    f'{node.location}: only support the bool value of condition expression, got "{cond_value}"'
-                )
-
-            if cond_value:
-                interpret_expression(node.body, symtab)
-                return interpret_while_loop(node, symtab)
-
+            while True:
+                cond_value = interpret_expression(node.cond, symtab)
+                if not isinstance(cond_value, bool):
+                    raise Exception(
+                        f'{node.location}: only support the bool value of condition expression, got "{cond_value}"'
+                    )
+                if not cond_value:
+                    break
+                try:
+                    interpret_expression(node.body, symtab)
+                except BreakException:
+                    break
+                except ContinueException:
+                    continue
             return None
 
         def interpret_function_call(node: AST.FunctionCall,
                                     symtab: SymTab) -> Value:
-            result = None
             func_name: AST.Identifier = node.name
             context_op = look_up_context(symtab, func_name.name)
             if context_op is None:
@@ -156,6 +175,7 @@ def interpret(node: AST.Module, symtab: SymTab) -> Value:
                     f'{node.location}: the type of function name must be a function, got "{op_value}"'
                 )
 
+            args = []
             if node.args is not None:
                 num_args = len(node.args)
                 if num_args > 6:
@@ -163,20 +183,16 @@ def interpret(node: AST.Module, symtab: SymTab) -> Value:
                         f'{node.location}: the implementation is allowed to limit the number of allowed arguments to 6, got "{num_args}"'
                     )
 
-                args = []
                 for i in range(num_args):
                     exp_value = interpret_expression(node.args[i], symtab)
                     args.append(exp_value)
 
-                result = op_value(*args)
-
-            return result
+            return op_value(*args)
 
         def interpret_return(node: AST.Return, symtab: SymTab) -> Value:
-            if node.value is None:
-                return None
-            else:
-                return interpret_expression(node.value, symtab)
+            val = interpret_expression(
+                node.value, symtab) if node.value is not None else None
+            raise ReturnException(val)
 
         match node:
             case AST.Literal():
@@ -209,6 +225,16 @@ def interpret(node: AST.Module, symtab: SymTab) -> Value:
             case AST.Return():
                 return interpret_return(node, symtab)
 
+            case AST.ControlFlow():
+                if node.name == 'break':
+                    raise BreakException(node.location)
+                elif node.name == 'continue':
+                    raise ContinueException(node.location)
+                else:
+                    raise Exception(
+                        f'{node.location}: unsupported control flow "{node.name}"'
+                    )
+
             case _:
                 raise Exception(
                     f'{node.location}: unsupported AST expression node "{node}"'
@@ -216,10 +242,42 @@ def interpret(node: AST.Module, symtab: SymTab) -> Value:
 
     def interpret_func_definition(node: AST.FuncDefinition,
                                   symtab: SymTab) -> Value:
-        ...
+        def func(*args: Value) -> Value:
+            expected_num_args = len(node.args) if node.args is not None else 0
+            if len(args) != expected_num_args:
+                raise Exception(
+                    f'function "{node.name.name}" expected {expected_num_args} arguments, got {len(args)}'
+                )
+
+            local: SymTab = SymTab({}, symtab)
+            if node.args is not None:
+                for (param, _), val in zip(node.args.items(), args):
+                    local.locals[param.name] = val
+            try:
+                return interpret_expression(node.body, local)
+            except ReturnException as e:
+                return e.value
+            except BreakException as exc:
+                raise Exception(f'{exc.location}: break outside of a loop')
+            except ContinueException as exc:
+                raise Exception(f'{exc.location}: continue outside of a loop')
+
+        symtab.locals[node.name.name] = func
+        return None
+
+    if node.funcs is not None:
+        for func_def in node.funcs:
+            interpret_func_definition(func_def, symtab)
 
     expr_value: Value = None
     if node.expr is not None:
-        expr_value = interpret_expression(node.expr, symtab)
+        try:
+            expr_value = interpret_expression(node.expr, symtab)
+        except BreakException as exc:
+            raise Exception(f'{exc.location}: break outside of a loop')
+        except ContinueException as exc:
+            raise Exception(f'{exc.location}: continue outside of a loop')
+        except ReturnException:
+            raise Exception('return outside of a function')
 
     return expr_value

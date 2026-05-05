@@ -14,14 +14,14 @@ from compiler.types import root_types
 
 
 @dataclass(frozen=True)
-class TestCase:
+class Case:
     name: str
     inputs: str
     outputs: list[str]
     source_code: str
 
 
-def find_test_cases(directory: str) -> list[TestCase]:
+def find_test_cases(directory: str) -> list[Case]:
     test_cases = []
     current_path = os.path.abspath(__file__)
     current_dir = os.path.dirname(current_path)
@@ -37,7 +37,7 @@ def find_test_cases(directory: str) -> list[TestCase]:
                 for line_number, line in enumerate(f, start=1):
                     line = line.strip()
                     if line.startswith('---'):
-                        testcase = TestCase(f'{filename}_{line_number}',
+                        testcase = Case(f'{filename}_{line_number}',
                                             l_input, l_output, l_source_code)
                         test_cases.append(testcase)
                         l_input = ''
@@ -61,11 +61,10 @@ def find_test_cases(directory: str) -> list[TestCase]:
 dir_testcase = 'test_programs'
 for test_case in find_test_cases(dir_testcase):
 
-    symtab: SymTab = SymTab(locals=top_level_type_locals, parent=None)
-
-    def run_test_case(testcase: TestCase = test_case) -> None:
+    def run_test_case(testcase: Case = test_case) -> None:
         tokens = tokenize(testcase.source_code)
         ast_node = parse(tokens)
+        symtab = SymTab(locals=dict(top_level_type_locals), parent=None)
         typecheck(ast_node, symtab)
         ir_instructions = generate_ir(root_types, ast_node)
         asm_code = generate_assembly(ir_instructions)

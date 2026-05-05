@@ -5,7 +5,7 @@ from compiler.assembly_generator import generate_assembly
 from compiler.interpreter import interpret
 from compiler.ir_generator import generate_ir
 from compiler.parser import parse
-from compiler.symtab import SymTab, top_level_type_locals
+from compiler.symtab import SymTab, global_interpreter_locals, top_level_type_locals
 from compiler.tokenizer import tokenize
 from compiler.type_checker import typecheck
 from compiler.types import root_types
@@ -50,7 +50,6 @@ def main() -> int:
         return 1
 
     source_code = read_source_code()
-    symtab: SymTab = SymTab(locals=top_level_type_locals, parent=None)
     if command == 'tokenize':
         tokens = tokenize(source_code)
         tokens_output = "".join(str(item) for item in tokens)
@@ -61,28 +60,35 @@ def main() -> int:
         ast_node = parse(tokens)
         print(f'{ast_node}')
 
-    elif command == 'interprete':
+    elif command in ['interpret', 'interprete']:
         tokens = tokenize(source_code)
         ast_node = parse(tokens)
-        executed_result = interpret(ast_node, symtab)
+        interpreter_symtab: SymTab = SymTab(
+            locals=dict(global_interpreter_locals), parent=None)
+        executed_result = interpret(ast_node, interpreter_symtab)
         print(f'{executed_result}')
 
     elif command == 'typecheck':
         tokens = tokenize(source_code)
         ast_node = parse(tokens)
+        symtab: SymTab = SymTab(locals=dict(top_level_type_locals), parent=None)
         verified_result = typecheck(ast_node, symtab)
         print(f'{verified_result}')
 
     elif command == 'ir':
         tokens = tokenize(source_code)
         ast_node = parse(tokens)
+        symtab = SymTab(locals=dict(top_level_type_locals), parent=None)
         typecheck(ast_node, symtab)
         ir_instructions = generate_ir(root_types, ast_node)
-        print("\n".join([str(ins) for ins in ir_instructions]))
+        for func_name, func_instructions in ir_instructions.items():
+            print(f'{func_name}:')
+            print("\n".join([str(ins) for ins in func_instructions]))
 
     elif command == 'asm':
         tokens = tokenize(source_code)
         ast_node = parse(tokens)
+        symtab = SymTab(locals=dict(top_level_type_locals), parent=None)
         typecheck(ast_node, symtab)
         ir_instructions = generate_ir(root_types, ast_node)
         asm_code = generate_assembly(ir_instructions)
@@ -91,6 +97,7 @@ def main() -> int:
     elif command == 'compile':
         tokens = tokenize(source_code)
         ast_node = parse(tokens)
+        symtab = SymTab(locals=dict(top_level_type_locals), parent=None)
         typecheck(ast_node, symtab)
         ir_instructions = generate_ir(root_types, ast_node)
         asm_code = generate_assembly(ir_instructions)

@@ -21,3 +21,39 @@ print_bool(y);
 prints 3
 prints false
 ---
+fun fact(n: Int): Int {
+    if n <= 1 then return 1
+    else return n * fact(n - 1)
+}
+print_int(fact(5));
+prints 120
+---
+fun is_even(n: Int): Bool {
+    if n == 0 then return true
+    else return is_odd(n - 1)
+}
+fun is_odd(n: Int): Bool {
+    if n == 0 then return false
+    else return is_even(n - 1)
+}
+print_bool(is_even(4));
+prints true
+---
+fun loop_return(): Int {
+    while true do return 7
+}
+print_int(loop_return());
+prints 7
+---
+fun repeated_case(): Int {
+    return 11
+}
+print_int(repeated_case());
+prints 11
+---
+fun repeated_case(): Int {
+    return 12
+}
+print_int(repeated_case());
+prints 12
+--- 

@@ -318,8 +318,6 @@ def generate_ir(root_types: dict[IRVar, Type],
                 st_body.add_local(arg_name.name, var_arg)
 
         visit_expression(st_body, node.body, func_name)
-
-        st.add_local(func_name, IRVar(func_name))
         return var_unit
 
     # Convert 'root_types' into a SymTab that maps all available global names to IR variables of the same name.
@@ -330,6 +328,8 @@ def generate_ir(root_types: dict[IRVar, Type],
         root_symtab.add_local(v.name, v)
 
     if root_node.funcs is not None:
+        for func_def in root_node.funcs:
+            root_symtab.add_local(func_def.name.name, IRVar(func_def.name.name))
         for func_def in root_node.funcs:
             visit_func_def(root_symtab, func_def)
 
