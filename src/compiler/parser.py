@@ -260,7 +260,7 @@ def parse(tokens: list[Token]) -> AST.Module:
         if peek().text == ';':
             consume(';')
 
-        if peek().type != 'END' and peek().text != '}':
+        if peek().type != 'END' and peek().text not in ['}', 'else']:
             raise Exception(
                 f'{peek().location}: return expression cannot be followed by any other expression, got "{peek().text}"'
             )
@@ -504,6 +504,10 @@ def parse(tokens: list[Token]) -> AST.Module:
 
         while peek().type != 'END':
             if peek().text == 'fun':
+                if len(exprs) != 0:
+                    raise Exception(
+                        f'{peek().location}: function definitions must appear before top-level expressions'
+                    )
                 funcs.append(parser_func_definition())
                 continue
 

@@ -1,6 +1,14 @@
+from dataclasses import dataclass
+
 from compiler.symtab import SymTab
 from compiler.types import BasicType, Bool, FuncType, Int, Type, Unit
 import compiler.ast as AST
+
+
+@dataclass
+class FunctionContext:
+    name: str
+    return_type: Type
 
 
 def typecheck(node: AST.Module, symtab: SymTab[Type]) -> Type:
@@ -59,7 +67,32 @@ def typecheck(node: AST.Module, symtab: SymTab[Type]) -> Type:
 
         raise Exception(f'{node.location}: unknown type expression "{node}"')
 
-    def typecheck_expression(node: AST.Expression, symtab: SymTab) -> Type:
+    def must_return(node: AST.Expression) -> bool:
+        if isinstance(node, AST.Return):
+            return True
+
+        if isinstance(node, AST.Block):
+            if node.statements is None:
+                return False
+            return any(must_return(statement) for statement in node.statements)
+
+        if isinstance(node, AST.IfExpression):
+            if node.else_clause is None:
+                return False
+            return must_return(node.then_clause) and must_return(
+                node.else_clause)
+
+        if isinstance(node, AST.WhileLoop):
+            return (isinstance(node.cond, AST.Literal)
+                    and node.cond.value is True
+                    and must_return(node.body))
+
+        return False
+
+    def typecheck_expression(node: AST.Expression,
+                             symtab: SymTab,
+                             func_ctx: FunctionContext | None = None,
+                             loop_depth: int = 0) -> Type:
 
         def typecheck_literal(node: AST.Literal, symtab: SymTab) -> Type:
             if isinstance(node.value, bool):
@@ -92,7 +125,8 @@ def typecheck(node: AST.Module, symtab: SymTab[Type]) -> Type:
                     f'{node.location}: unary operator "{key_op}" was not found in the context and all parent contexts'
                 )
 
-            clause_type = typecheck_expression(node.unary_clause, symtab)
+            clause_type = typecheck_expression(node.unary_clause, symtab,
+                                               func_ctx, loop_depth)
             if op_type == clause_type:
                 return assign_type(node, op_type)
 
@@ -102,8 +136,10 @@ def typecheck(node: AST.Module, symtab: SymTab[Type]) -> Type:
 
         def typecheck_binary_op(node: AST.BinaryOp, symtab: SymTab) -> Type:
             exp_types = []
-            exp_types.append(typecheck_expression(node.left, symtab))
-            exp_types.append(typecheck_expression(node.right, symtab))
+            exp_types.append(
+                typecheck_expression(node.left, symtab, func_ctx, loop_depth))
+            exp_types.append(
+                typecheck_expression(node.right, symtab, func_ctx, loop_depth))
 
             if node.op == '=':
                 if exp_types[0] == exp_types[1]:
@@ -171,7 +207,8 @@ def typecheck(node: AST.Module, symtab: SymTab[Type]) -> Type:
 
             value: Type = Unit
             for statement in statements:
-                value = typecheck_expression(statement, context)
+                value = typecheck_expression(statement, context, func_ctx,
+                                             loop_depth)
 
             return assign_type(node, value)
 
@@ -192,7 +229,8 @@ def typecheck(node: AST.Module, symtab: SymTab[Type]) -> Type:
                 t_type = get_type_expr(node.declared_type_exp, symtab)
                 node.declared_type_exp.type = t_type
 
-            exp_type = typecheck_expression(node.initializer, symtab)
+            exp_type = typecheck_expression(node.initializer, symtab, func_ctx,
+                                            loop_depth)
             if t_type is not None and t_type != exp_type:
                 raise Exception(
                     f'{node.location}: variable "{var_name.name}" expected type "{t_type}", got type "{exp_type}"'
@@ -203,18 +241,20 @@ def typecheck(node: AST.Module, symtab: SymTab[Type]) -> Type:
 
         def typecheck_if_expression(node: AST.IfExpression,
                                     symtab: SymTab) -> Type:
-            t1 = typecheck_expression(node.cond, symtab)
+            t1 = typecheck_expression(node.cond, symtab, func_ctx, loop_depth)
 
             if t1 is not Bool:
                 raise Exception(
                     f'{node.location}: if condition expression expected type "{Bool}", got type "{t1}"'
                 )
 
-            t2 = typecheck_expression(node.then_clause, symtab)
+            t2 = typecheck_expression(node.then_clause, symtab, func_ctx,
+                                      loop_depth)
             if node.else_clause is None:
                 return assign_type(node, Unit)
 
-            t3 = typecheck_expression(node.else_clause, symtab)
+            t3 = typecheck_expression(node.else_clause, symtab, func_ctx,
+                                      loop_depth)
             if t2 != t3:
                 raise Exception(
                     f'{node.location}: if expression expected the same types on then clause and else clause, got "{t2}" and "{t3}"'
@@ -223,14 +263,18 @@ def typecheck(node: AST.Module, symtab: SymTab[Type]) -> Type:
             return assign_type(node, t2)
 
         def typecheck_while_loop(node: AST.WhileLoop, symtab: SymTab) -> Type:
-            t1 = typecheck_expression(node.cond, symtab)
+            t1 = typecheck_expression(node.cond, symtab, func_ctx, loop_depth)
 
             if t1 is not Bool:
                 raise Exception(
                     f'{node.location}: while-loop expression expected type "{Bool}", got type "{t1}"'
                 )
 
-            t2 = typecheck_expression(node.body, symtab)
+            t2 = typecheck_expression(node.body, symtab, func_ctx,
+                                      loop_depth + 1)
+            if (isinstance(node.cond, AST.Literal) and node.cond.value is True
+                    and t2 != Unit):
+                return assign_type(node, t2)
             return assign_type(node, Unit)
 
         def typecheck_function_call(node: AST.FunctionCall,
@@ -273,7 +317,8 @@ def typecheck(node: AST.Module, symtab: SymTab[Type]) -> Type:
                     )
 
                 for i, arg in enumerate(node.args):
-                    exp_value = typecheck_expression(arg, symtab)
+                    exp_value = typecheck_expression(arg, symtab, func_ctx,
+                                                     loop_depth)
                     if exp_value != func_type.args[i]:
                         raise Exception(
                             f'{node.location}: function expression expected the type of {i+1}-th parameter is "{func_type.args[i]}", got "{exp_value}"'
@@ -282,10 +327,18 @@ def typecheck(node: AST.Module, symtab: SymTab[Type]) -> Type:
             return assign_type(node, func_type.return_type)
 
         def typecheck_return(node: AST.Return, symtab: SymTab) -> Type:
-            if node.value is None:
-                return assign_type(node, Unit)
-            else:
-                return typecheck_expression(node.value, symtab)
+            if func_ctx is None:
+                raise Exception(f'{node.location}: return outside of a function')
+
+            val_type = typecheck_expression(
+                node.value, symtab, func_ctx,
+                loop_depth) if node.value is not None else Unit
+            if val_type != func_ctx.return_type:
+                raise Exception(
+                    f'{node.location}: function "{func_ctx.name}" return type mismatch: '
+                    f'expected "{func_ctx.return_type}", got "{val_type}"')
+
+            return assign_type(node, val_type)
 
         match node:
             case AST.Literal():
@@ -319,74 +372,110 @@ def typecheck(node: AST.Module, symtab: SymTab[Type]) -> Type:
                 return typecheck_return(node, symtab)
 
             case AST.ControlFlow():
+                if loop_depth == 0:
+                    raise Exception(
+                        f'{node.location}: {node.name} outside of a loop')
                 return assign_type(node, Unit)
 
             case _:
                 raise Exception(
                     f"{node.location}: unsupported AST expression node {node}")
 
-    def typecheck_func_definition(node: AST.FuncDefinition,
-                                  symtab: SymTab) -> Type:
+    def register_func_signature(node: AST.FuncDefinition,
+                                symtab: SymTab) -> None:
         func_name: AST.Identifier = node.name
 
         try:
             symtab.require(func_name.name)
+            raise Exception(
+                f'{node.location}: function definition "{func_name.name}" was defined in the context and all parent contexts'
+            )
         except ValueError:
-            args_type: list[BasicType] = []
-            # check args types
-            if node.args is not None:
-                num_args = len(node.args)
+            pass
 
-                if num_args > 6:
-                    raise Exception(
-                        f'{node.location}: number of parameters of function definition "{func_name.name}" cannot exceed 6, got "{num_args}"'
-                    )
+        args_type: list[BasicType] = []
+        if node.args is not None:
+            num_args = len(node.args)
 
-                for arg_name, arg_type in node.args.items():
+            if num_args > 6:
+                raise Exception(
+                    f'{node.location}: number of parameters of function definition "{func_name.name}" cannot exceed 6, got "{num_args}"'
+                )
+
+            for _, arg_type in node.args.items():
+                try:
                     type_value = get_type_expr(arg_type, symtab)
-                    arg_type.type = type_value
+                except Exception:
+                    raise Exception(
+                        f'{node.location}: function definition "{func_name.name}" had a unknown argument type "{arg_type.name}"'
+                    )
+                if isinstance(type_value, BasicType):
+                    args_type.append(type_value)
 
-                    if isinstance(type_value, BasicType):
-                        args_type.append(type_value)
+        try:
+            r_type = get_type_expr(node.return_type, symtab)
+        except Exception:
+            raise Exception(
+                f'{node.location}: function definition "{func_name.name}" had a unknown return type "{node.return_type}"'
+            )
 
-                    symtab.add_local(arg_name.name, type_value)
+        func_type = FuncType(args_type if args_type else None, r_type)
+        symtab.add_local(func_name.name, func_type)
 
-            # check return type == body type
-            try:
-                r_type = get_type_expr(node.return_type, symtab)
-            except Exception:
-                raise Exception(
-                    f'{node.location}: function definition "{func_name.name}" had a unknown return type "{r_type}"'
-                )
+    def typecheck_func_body(node: AST.FuncDefinition, symtab: SymTab) -> None:
+        func_symtab = SymTab({}, symtab)
+        if node.args is not None:
+            for arg_name, arg_type in node.args.items():
+                try:
+                    type_value = get_type_expr(arg_type, symtab)
+                except Exception:
+                    raise Exception(
+                        f'{node.location}: function definition "{node.name.name}" had a unknown argument type "{arg_type.name}"'
+                    )
+                arg_type.type = type_value
+                func_symtab.add_local(arg_name.name, type_value)
 
-            body_type = typecheck_expression(node.body, symtab)
-            if r_type != body_type:
-                raise Exception(
-                    f'{node.location}: function definition "{func_name.name}" expected a return type "{r_type}", got "{body_type}"'
-                )
+        func_name: AST.Identifier = node.name
+        try:
+            r_type = get_type_expr(node.return_type, symtab)
+        except Exception:
+            raise Exception(
+                f'{node.location}: function definition "{func_name.name}" had a unknown return type "{node.return_type}"'
+            )
 
-            node.return_type.type = r_type
-            if len(args_type) == 0:
-                func_type = FuncType(None, r_type)
-            else:
-                func_type = FuncType(args_type, r_type)
+        node.return_type.type = r_type
+        func_ctx = FunctionContext(func_name.name, r_type)
+        body_type = typecheck_expression(node.body, func_symtab, func_ctx)
 
-            symtab.add_local(func_name.name, func_type)
-            return Unit
+        if r_type != body_type:
+            raise Exception(
+                f'{node.location}: function definition "{func_name.name}" expected a return type "{r_type}", got "{body_type}"'
+            )
 
-        raise Exception(
-            f'{node.location}: function definition "{func_name.name}" was defined in the context and all parent contexts'
-        )
+        if r_type != Unit and not must_return(node.body):
+            raise Exception(
+                f'{node.location}: function definition "{func_name.name}" with return type "{r_type}" must execute a return expression'
+            )
 
     def typecheck_module(node: AST.Module, symtab: SymTab) -> Type:
-        if node.funcs is not None:
-            for func_def in node.funcs:
-                typecheck_func_definition(func_def, symtab)
+        added_func_names: list[str] = []
 
-        if node.expr is not None:
-            return typecheck_expression(node.expr, symtab)
+        try:
+            if node.funcs is not None:
+                for func_def in node.funcs:
+                    register_func_signature(func_def, symtab)
+                    added_func_names.append(func_def.name.name)
+                for func_def in node.funcs:
+                    typecheck_func_body(func_def, symtab)
 
-        return Unit
+            if node.expr is not None:
+                return typecheck_expression(node.expr, symtab)
+
+            return Unit
+        except Exception:
+            for func_name in added_func_names:
+                symtab.locals.pop(func_name, None)
+            raise
 
     """typecheck start here"""
     return typecheck_module(node, symtab)

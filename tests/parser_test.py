@@ -664,6 +664,65 @@ def test_func_def() -> None:
             ],
             expr=None)
 
+    assert parse(
+        tokenize("fun fact(n: Int): Int {\n"
+                 "if n <= 1 then return 1\n"
+                 "else return n * fact(n - 1)\n"
+                 "}")) == AST.Module(
+                     funcs=[
+                         AST.FuncDefinition(
+                             location=L,
+                             name=AST.Identifier(L, 'fact'),
+                             args={
+                                 AST.Identifier(L, 'n'):
+                                 AST.BasicTypeExpr(L, 'Int')
+                             },
+                             return_type=AST.BasicTypeExpr(L, 'Int'),
+                             body=AST.Block(
+                                 location=L,
+                                 op='{}',
+                                 statements=[
+                                     AST.IfExpression(
+                                         location=L,
+                                         op='if',
+                                         cond=AST.BinaryOp(
+                                             location=L,
+                                             left=AST.Identifier(L, 'n'),
+                                             op='<=',
+                                             right=AST.Literal(
+                                                 location=L, value=1)),
+                                         then_clause=AST.Return(
+                                             location=L,
+                                             op='return',
+                                             value=AST.Literal(
+                                                 location=L, value=1)),
+                                         else_clause=AST.Return(
+                                             location=L,
+                                             op='return',
+                                             value=AST.BinaryOp(
+                                                 location=L,
+                                                 left=AST.Identifier(
+                                                     L, 'n'),
+                                                 op='*',
+                                                 right=AST.FunctionCall(
+                                                     location=L,
+                                                     op='call',
+                                                     name=AST.Identifier(
+                                                         L, 'fact'),
+                                                     args=[
+                                                         AST.BinaryOp(
+                                                             location=L,
+                                                             left=AST.Identifier(
+                                                                 L, 'n'),
+                                                             op='-',
+                                                             right=AST.Literal(
+                                                                 location=L,
+                                                                 value=1))
+                                                     ]))))
+                                 ]))
+                     ],
+                     expr=None)
+
 
 """
 Here are some test cases for inputs that should fail to parse
@@ -741,6 +800,10 @@ def test_var_declaration_exceptions() -> None:
 
 
 def test_func_def_exceptions() -> None:
+    match_exception = r'.*function definitions must appear before top-level expressions'
+    with pytest.raises(Exception, match=match_exception):
+        parse(tokenize("print_int(f()); fun f(): Int {\nreturn 1;\n}"))
+
     match_exception = r'.*return expression cannot be followed by any other expression, got "x"'
     with pytest.raises(Exception, match=match_exception):
         parse(tokenize("fun square(x: Int): Int {\nreturn x * x; x\n}"))
