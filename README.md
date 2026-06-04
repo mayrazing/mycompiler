@@ -1,68 +1,121 @@
-# A simple Compiler used python
+# mycompiler
 
-## Current features
-- Support the compiler stages including: Tokenizer, Parser, (Interpreter), Type checker, IR generator, Assembly generator and Assembler
-- Support data type: 
--- none type(use 'unit'), String, Number(-2^64 to 2^63 - 1) and Boolean datatype
--- variables
--- binary and unary operations
--- if/then/else expressions
--- while loops
--- functions call and functions definition
--- return expression
-- Support interleaved combinations of function definitions and expressions
-- Support skip contents: spaces symbol, horizontal tab, new line symbol, single comment, multi-lines comments
-- Support break and continue
-- Support unit tests that executed successfully or thrown the detailed exceptions
-- Support end-to-end tests
+A compiler written in Python that translates a statically-typed, C-like language all the way to native x86-64 binaries.
 
-## Appendix
+[中文](README.zh.md)
 
-### Setup
+## Features
 
-Requirements:
+- Full compilation pipeline: Tokenizer → Parser → Type Checker → IR Generator → Assembly Generator → Assembler
+- Data types: `Int`, `Bool`, `Unit`
+- Variables with initializers and assignment statements (right-associative)
+- Binary operators: `+`, `-`, `*`, `/`, `%`, `==`, `!=`, `<`, `<=`, `>`, `>=`, `and`, `or` with precedence and left-associativity
+- Unary operators: `-`, `not`
+- `if/then/else` expressions
+- `while` loops with `break` and `continue`
+- Function definitions and calls (recursion and mutual recursion supported)
+- `return` expressions
+- Built-in library functions: `print_int`, `read_int`, `print_bool`
+- Block scoping
+- Single-line (`//`) and multi-line (`/* */`) comments
+- Unit tests and end-to-end tests
 
-- [Pyenv](https://github.com/pyenv/pyenv) for installing Python 3.11+
-    - Recommended installation method: the "automatic installer"
-      i.e. `curl https://pyenv.run | bash`
-- [Poetry](https://python-poetry.org/) for installing dependencies
-    - Recommended installation method: the "official installer"
-      i.e. `curl -sSL https://install.python-poetry.org | python3 -`
+## Architecture
 
-Install dependencies:
+```
+Source Code
+    │
+    ▼
+Tokenizer  →  token list
+    │
+    ▼
+Parser     →  AST
+    │
+    ▼
+Type Checker  →  typed AST
+    │
+    ▼
+IR Generator  →  IR instructions (per function)
+    │
+    ▼
+Assembly Generator  →  x86-64 assembly
+    │
+    ▼
+Assembler  →  native binary
+```
 
-    # Install Python specified in `.python-version`
-    pyenv install
-    # Install dependencies specified in `pyproject.toml`
-    poetry install
+## Getting Started
 
-If `pyenv install` gives an error about `_tkinter`, you can ignore it.
-If you see other errors, you may have to investigate.
+### Requirements
 
-If you have trouble with Poetry not picking up pyenv's python installation,
-try `poetry env remove --all` and then `poetry install` again.
+- [Pyenv](https://github.com/pyenv/pyenv) — install Python 3.11+
+  - Recommended: `curl https://pyenv.run | bash`
+- [Poetry](https://python-poetry.org/) — manage dependencies
+  - Recommended: `curl -sSL https://install.python-poetry.org | python3 -`
 
-Typecheck and run tests:
+### Install
 
-    ./check.sh
-    # or individually:
-    poetry run mypy .
-    poetry run pytest -vv
+```bash
+# Install the Python version specified in .python-version
+pyenv install
 
-Run the compiler on a source code file:
+# Install dependencies
+poetry install
+```
 
-    ./compiler.sh COMMAND path/to/source/code
+> If `pyenv install` warns about `_tkinter`, you can safely ignore it.
+> If Poetry doesn't pick up pyenv's Python, run `poetry env remove --all` then `poetry install` again.
 
-where `COMMAND` may be one of these:
+## Usage
 
-    interpret
-    TODO(student): add more
+```bash
+./compiler.sh <command> [source_file]
+```
 
-### IDE setup
+If `source_file` is omitted, source code is read from stdin.
 
-Recommended VSCode extensions:
+| Command | Description |
+|---------|-------------|
+| `tokenize` | Print the token list |
+| `parse` | Print the AST |
+| `interpret` | Interpret and run the source code |
+| `typecheck` | Type-check and print the inferred type |
+| `ir` | Print IR instructions per function |
+| `asm` | Print generated x86-64 assembly |
+| `compile` | Compile to a native binary (`./compiled_program`) |
+
+**Example:**
+
+```bash
+# Compile and run a source file
+./compiler.sh compile examples/hello.txt
+./compiled_program
+```
+
+## Development
+
+Run type checks and all tests:
+
+```bash
+./check.sh
+```
+
+Or individually:
+
+```bash
+poetry run mypy .
+poetry run pytest -vv
+```
+
+### IDE Setup
+
+Recommended VS Code extensions:
 
 - Python
 - Pylance
 - autopep8
+
+## License
+
+Licensed under the [Apache License 2.0](LICENSE).
 
