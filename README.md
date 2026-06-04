@@ -88,7 +88,7 @@ If `source_file` is omitted, source code is read from stdin.
 
 ```bash
 # Compile and run a source file
-./compiler.sh compile examples/hello.txt
+./compiler.sh compile tests/test_programs/function_case.txt
 ./compiled_program
 ```
 
