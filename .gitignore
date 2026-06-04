@@ -1,7 +1,11 @@
 *.pyc
 __pycache__
 /.mypy_cache
-docs/superpowers/specs/2026-05-05-compiler-feature-completion-design.md
-pro.md
-docs/superpowers/plans/2026-05-05-compiler-feature-completion.md
-.gitignore
+docs/*
+CLAUDE.md
+compiled_program
+compiled_program_test
+.pytest_cache
+.codex
+.claude
+.agents
